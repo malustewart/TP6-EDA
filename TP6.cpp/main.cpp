@@ -2,35 +2,35 @@
 #include <iostream>
 #include "point.h"
 #include "gif.h"
+#include "Display.hpp"
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_image.h>
-#include <allegro5/allegro_primitives.h>
+
 using namespace std;
+
+bool initAllegro();
+void shutdownAllegro();
 
 typedef char BYTE;
 
 int main(int argc, char** argv) {
 	
-	if(!al_init()) return -1;
-	if(!al_init_primitives_addon()) return -1;	//ya se que esta muy cabeza	if(!al_init_image_addon()) return -1;
-
-	
-	ALLEGRO_DISPLAY* display = al_create_display(1000, 900);
-	ALLEGRO_EVENT_QUEUE* event_queue = al_create_event_queue();
-	al_register_event_source(event_queue, al_get_display_event_source(display));	
+	if(!initAllegro())
+	{
+		std::cout << "Error inicializando allegro" << std::endl;
+		return -1;
+	}	
 	
 /********************************************************
  * 
  * 
- * 
- * LO UTIL ARRANCA ACA, MAS ARRIBA ESTA TODO RE CABEZA
+ * CONECTAR, RECIBIR PAQUETE Y TODA ESA MAGIA
  * 
  * 
  ********************************************************/	
 	
 	BYTE animationCode; 
-//	animationCode = getchar();	//getchar es para debuggear, en el posta lo leemos del paquete
-	animationCode = 'B';
+	animationCode = 'C';	//para debuggear
 	
 	std::string gifName;	//nombre del gif
 	unsigned int gifLength;	//frames que conforman el gif
@@ -38,107 +38,109 @@ int main(int argc, char** argv) {
 	point mov;				//valores por los cuales se debe modificar la posicion ("vector de movimiento")
 	unsigned int framesPerMovement = 1;	//cada cuantos frames se debe cambiar la posicion
 	float timePerFrame;		//tiempo que dura cada frame en pantalla en segundos
+	bool looping;
 
+	gif* animation = nullptr;
 	
 	switch(animationCode)
 	{
-		case 'A':{
-			gifName = "Cat Running";
-			gifLength = 12;
-			position.setX(0);
-			position.setY(0);
-			mov.setX(2);
-			mov.setY(0);
-			framesPerMovement = 1;
+		case 'A':
 			timePerFrame = 0.1;
-			break;}
-		case 'B':{
-			gifName = "Explosion 1";
-			gifLength = 8;
-			position.setX(0);
-			position.setY(0);
-			mov.setX(0);
-			mov.setY(0);
-			framesPerMovement = 1;
+			animation = new gif("Cat Running", 12, point (2,0), point (0,0), 1, true);
+			break;
+		case 'B':
 			timePerFrame = 0.12;
-			break;}
-		case 'C':{
-			gifName = "Explosion 2";
-			gifLength = 48;
-			position.setX(0);
-			position.setY(0);
-			mov.setX(0);
-			mov.setY(0);
-			framesPerMovement = 1;
+			animation = new gif("Explosion 1", 8, point (0,0), point (0,0), 1, false);
+			break;
+		case 'C':
 			timePerFrame = 0.1;
-			break;}		
-		case 'D':{
-			gifName = "Homer Dance";
-			gifLength = 10;
-			position.setX(0);
-			position.setY(0);
-			mov.setX(100);
-			mov.setY(0);
-			framesPerMovement = 1;
+			animation = new gif("Explosion 2", 48, point (0,0), point (0,0), 1, false);
+			break;		
+		case 'D':
 			timePerFrame = 0.1;
-			break;}
-		case 'E':{
-			gifName = "Super Mario Running";
-			gifLength = 12;
-			position.setX(0);
-			position.setY(0);
-			mov.setX(2);
-			mov.setY(0);
-			framesPerMovement = 1;
+			animation = new gif("Homer Dance", 12, point (100,0), point (0,0), 1, true);
+			break;
+		case 'E':
 			timePerFrame = 0.04;
-			break;}
-		case 'F':{
-			gifName = "Sonic Running";
-			gifLength = 10;
-			position.setX(0);
-			position.setY(0);
-			mov.setX(70);
-			mov.setY(0);
-			framesPerMovement = 4;
+			animation = new gif("Super Mario Running", 12, point (2,0), point (0,0), 1, true);
+			break;
+		case 'F':
 			timePerFrame = 0.06;
-			break;}
+			animation = new gif("Sonic Running", 10, point (70,0), point (0,0), 4, true);
+			break;
 		default:
-#warning sacar este return horripilante
-			cout << "Error: codigo de gif incorrecto" << endl;
+			#warning sacar este return horripilante
+			std::cout << "Error: codigo de gif incorrecto" << std::endl;
 			return -1;	
 	}
+	if(!animation->isValid())
+		return -1;		//PONER DEFINE GATOS
 
-	ALLEGRO_TIMER* timer = al_create_timer(timePerFrame);
+
+	Display* dis = new Display(1000, 1000);	//crear display. 
+	//Se crea en el heap para tener control de cuando se destruye 
+	//(se debe destruir antes de que se desinstale allegro para poder invocar a la funcion al_destroy_display())
+	ALLEGRO_TIMER* timer = al_create_timer(timePerFrame);		//crear timer con el tiempo correspondiente a la animacion
+	ALLEGRO_EVENT_QUEUE* event_queue = al_create_event_queue();	//crear cola de eventos
+
+	al_register_event_source(event_queue, al_get_display_event_source(dis->getDisplay()));
 	al_register_event_source(event_queue, al_get_timer_event_source(timer));
 
+	ALLEGRO_EVENT ev;
+	bool keepDrawing = true;
+
+	al_start_timer(timer);
+
+	do
 	{
-		gif animation(gifName, gifLength, mov, framesPerMovement);
-		if(!animation.isValid())
-			return -1;
-
-		al_start_timer(timer);
-
-		ALLEGRO_EVENT ev;
-		do
-		{
-			al_wait_for_event(event_queue, &ev);
-			if(ev.type == ALLEGRO_EVENT_TIMER) 
-			{	
-				al_clear_to_color(al_map_rgb(0,0,0));	//poner cualquier color de fondo o incluso una imagen
-				animation.drawNextImage();				//dibujar la proxima imagen de la animacion
-				al_flip_display();						//mostrar los cambios en pantalla
-			}
+		al_wait_for_event(event_queue, &ev);
+		if(ev.type == ALLEGRO_EVENT_TIMER) 
+		{	
+			al_clear_to_color(al_map_rgb(0,0,0));	//poner cualquier color de fondo o incluso una imagen
+			keepDrawing = animation->updateImg();	//dibujar la proxima imagen de la animacion
+			dis->showChanges();						//mostrar los cambios del display
 		}
-		while (ev.type != ALLEGRO_EVENT_DISPLAY_CLOSE && animation.getPosition().getX() <= al_get_display_width(display));		
 	}
-	//al salir de este bloque, se destruye animation y todos los bitmaps que cargo.
-	//Importante que se destruya antes de desintalar el addon de allegro de imagen, ya que sino no se podria invocar a al_destroy_bitmap().
-	
-	al_destroy_display(display);
+	while (ev.type != ALLEGRO_EVENT_DISPLAY_CLOSE 		//salir si se cierra el display
+		&& animation->getPosition().getX() <= dis->getDisplayWidth()	//salir si el gif se va de pantalla
+		&& animation->getPosition().getX() >= 0			//salir si el gif se va de pantalla
+		&& keepDrawing == true);						//salir si se llego al final del gif
+
 	al_destroy_timer(timer);
 	al_destroy_event_queue(event_queue);
-	al_shutdown_image_addon();
+	delete dis;
+	delete animation;
+
+	//al salir de este bloque, se destruye animation y todos los bitmaps que cargo, y el display.
+	//Importante que se destruya antes de desintalar el addon de allegro de imagen, ya que sino el destructor 
+	//no podria invocar a al_destroy_bitmap() ni al_destroy_display();
+	
+	
+	/**************************************
+	 * 
+	 * 
+	 * CONECTAR Y FOWARDEAR PAQUETE YOU_GO
+	 * 
+	 **************************************/
+	
+	shutdownAllegro();
 	
 	return 0;
+}
+
+//Devuelve true si no hubo un error en la inicializacion y false en caso contrario.
+bool initAllegro()
+{
+    if(!al_init())
+        return false;
+	else  if(!al_init_image_addon())
+		return false;
+	return true;
+}
+
+//
+void shutdownAllegro()
+{
+	al_shutdown_image_addon();
 }
 
